@@ -1,1 +1,0 @@
-"""NetDefenders test package."""
