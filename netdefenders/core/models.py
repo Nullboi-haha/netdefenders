@@ -1,8 +1,8 @@
 """Structured data models for the NetDefenders system.
 
 All models derive from a common base that provides serialisation helpers so
-findings can be logged, displayed, and transported between agents without
-ad-hoc dict manipulation.
+findings can be logged, displayed, and transported through the pipeline
+without ad-hoc dict manipulation.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ class Severity(str, Enum):
 
 
 class Confidence(str, Enum):
-    """How certain an agent is about a finding."""
+    """How certain the analyzer is about a finding."""
 
     HIGH = "high"
     MEDIUM = "medium"
@@ -165,14 +165,14 @@ class Indicator(_BaseModel):
 
 @dataclass
 class Finding(_BaseModel):
-    """A single security finding produced by an agent."""
+    """A single security finding produced by the analyzer."""
 
     title: str
     description: str
     severity: Severity
     confidence: Confidence
     category: FindingCategory
-    source_agent: str
+    source: str
     evidence: list[str] = field(default_factory=list)
     indicators: list[Indicator] = field(default_factory=list)
     recommended_action: str = ""
@@ -234,29 +234,12 @@ class SecurityEvent(_BaseModel):
 
 
 @dataclass
-class AgentResult(_BaseModel):
-    """Result returned by an agent after processing a task."""
-
-    agent_name: str
-    agent_role: str
-    findings: list[Finding] = field(default_factory=list)
-    summary: str = ""
-    success: bool = True
-    error: str = ""
-
-    @property
-    def finding_count(self) -> int:
-        return len(self.findings)
-
-
-@dataclass
 class SecurityAssessment(_BaseModel):
-    """Final output of the orchestrator after correlating all agent results."""
+    """Final output of the orchestrator after correlating all findings."""
 
     assessment_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     events_analyzed: int = 0
-    agent_results: list[AgentResult] = field(default_factory=list)
     correlated_findings: list[Finding] = field(default_factory=list)
     indicators: list[Indicator] = field(default_factory=list)
     overall_severity: Severity = Severity.INFO

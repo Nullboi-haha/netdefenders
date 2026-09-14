@@ -71,7 +71,7 @@ class TestConfig:
         assert hasattr(cfg, "openai_api_key")
         assert hasattr(cfg, "openai_model")
         assert hasattr(cfg, "log_level")
-        assert hasattr(cfg, "max_agent_retries")
+        assert hasattr(cfg, "max_retries")
         assert hasattr(cfg, "data_dir")
         assert hasattr(cfg, "samples_dir")
 
@@ -113,14 +113,14 @@ class TestModels:
         f = Finding(
             title="test", description="test",
             severity=Severity.CRITICAL, confidence=Confidence.HIGH,
-            category=FindingCategory.THREAT, source_agent="test",
+            category=FindingCategory.THREAT, source="test",
         )
         assert f.severity_score == 10.0
 
         f_low = Finding(
             title="test", description="test",
             severity=Severity.LOW, confidence=Confidence.LOW,
-            category=FindingCategory.THREAT, source_agent="test",
+            category=FindingCategory.THREAT, source="test",
         )
         assert f_low.severity_score == 1.0
 
@@ -128,7 +128,7 @@ class TestModels:
         f = Finding(
             title="t", description="d",
             severity="high", confidence="medium", category="network",
-            source_agent="x",
+            source="x",
         )
         assert f.severity == Severity.HIGH
         assert f.confidence == Confidence.MEDIUM

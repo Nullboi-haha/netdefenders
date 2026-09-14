@@ -1,7 +1,7 @@
 """Single central security analyzer for NetDefenders.
 
-Replaces the former multi-agent architecture with one unified analyzer
-that examines all categories of defensive security data.  When an AI
+A single unified analyzer that examines all categories of defensive
+security data.  When an AI
 provider is configured, the analyzer can use it for enhanced reasoning;
 otherwise it falls back to deterministic local pattern matching.
 """
@@ -30,7 +30,7 @@ _log = get_logger("analyzer")
 ANALYZER_NAME = "SecurityAnalyzer"
 
 # ---------------------------------------------------------------------------
-# Detection rule definitions (consolidated from former agents)
+# Detection rule definitions
 # ---------------------------------------------------------------------------
 
 # Process names commonly associated with living-off-the-land attacks or
@@ -285,7 +285,7 @@ class SecurityAnalyzer:
                     severity=Severity.HIGH,
                     confidence=Confidence.HIGH,
                     category=FindingCategory.THREAT,
-                    source_agent=self.name,
+                    source=self.name,
                     evidence=[
                         f"process_name={evt.process_name}",
                         f"pid={evt.process_pid}",
@@ -325,7 +325,7 @@ class SecurityAnalyzer:
                         severity=Severity.HIGH,
                         confidence=Confidence.HIGH,
                         category=FindingCategory.IOC,
-                        source_agent=self.name,
+                        source=self.name,
                         evidence=[
                             f"domain={evt.domain}",
                             f"host={evt.host}",
@@ -366,7 +366,7 @@ class SecurityAnalyzer:
                         severity=Severity.MEDIUM,
                         confidence=Confidence.MEDIUM,
                         category=FindingCategory.PERSISTENCE,
-                        source_agent=self.name,
+                        source=self.name,
                         evidence=[f"description={evt.description}", f"keyword={kw}"],
                         recommended_action=(
                             "Review the scheduled task / registry entry, "
@@ -387,7 +387,7 @@ class SecurityAnalyzer:
                         severity=Severity.HIGH,
                         confidence=Confidence.MEDIUM,
                         category=FindingCategory.PRIVILEGE_ESCALATION,
-                        source_agent=self.name,
+                        source=self.name,
                         evidence=[f"description={evt.description}", f"keyword={kw}"],
                         recommended_action=(
                             "Review local admin group membership on the host, "
@@ -409,7 +409,7 @@ class SecurityAnalyzer:
                         severity=Severity.CRITICAL,
                         confidence=Confidence.MEDIUM,
                         category=FindingCategory.CREDENTIAL_ATTACK,
-                        source_agent=self.name,
+                        source=self.name,
                         evidence=[f"description={evt.description}", f"keyword={kw}"],
                         recommended_action=(
                             "Rotate all credentials for affected accounts, "
@@ -437,7 +437,7 @@ class SecurityAnalyzer:
                         severity=Severity.MEDIUM,
                         confidence=Confidence.MEDIUM,
                         category=FindingCategory.THREAT,
-                        source_agent=self.name,
+                        source=self.name,
                         evidence=[f"description={evt.description}", f"pattern={cmd}"],
                         recommended_action=(
                             "Review the full command line and parent process, "
@@ -463,7 +463,7 @@ class SecurityAnalyzer:
                 severity=Severity.HIGH,
                 confidence=Confidence.MEDIUM,
                 category=FindingCategory.NETWORK,
-                source_agent=self.name,
+                source=self.name,
                 evidence=[
                     f"remote_ip={evt.remote_ip}",
                     f"remote_port={port}",
@@ -499,7 +499,7 @@ class SecurityAnalyzer:
                 severity=Severity.CRITICAL,
                 confidence=Confidence.HIGH,
                 category=FindingCategory.IOC,
-                source_agent=self.name,
+                source=self.name,
                 evidence=[
                     f"remote_ip={evt.remote_ip}",
                     f"host={evt.host}",
@@ -539,7 +539,7 @@ class SecurityAnalyzer:
                 severity=Severity.MEDIUM,
                 confidence=Confidence.LOW,
                 category=FindingCategory.ANOMALY,
-                source_agent=self.name,
+                source=self.name,
                 evidence=[
                     f"remote_ip={evt.remote_ip}",
                     f"remote_port={port}",
@@ -570,7 +570,7 @@ class SecurityAnalyzer:
                         severity=Severity.MEDIUM,
                         confidence=Confidence.MEDIUM,
                         category=FindingCategory.NETWORK,
-                        source_agent=self.name,
+                        source=self.name,
                         evidence=[
                             f"host={host}",
                             f"distinct_ports={len(ports)}",
@@ -607,7 +607,7 @@ class SecurityAnalyzer:
                         severity=Severity.MEDIUM,
                         confidence=Confidence.LOW,
                         category=FindingCategory.ANOMALY,
-                        source_agent=self.name,
+                        source=self.name,
                         evidence=[
                             f"host={host}",
                             f"remote_ip={ip}",
@@ -637,7 +637,7 @@ class SecurityAnalyzer:
                 severity=Severity.CRITICAL,
                 confidence=Confidence.HIGH,
                 category=FindingCategory.MALWARE,
-                source_agent=self.name,
+                source=self.name,
                 evidence=[f"file_name={evt.file_name}", f"sha256={h}", f"host={evt.host}"],
                 indicators=[
                     Indicator(
@@ -672,7 +672,7 @@ class SecurityAnalyzer:
                         severity=Severity.HIGH,
                         confidence=Confidence.MEDIUM,
                         category=FindingCategory.MALWARE,
-                        source_agent=self.name,
+                        source=self.name,
                         evidence=[
                             f"file_name={evt.file_name}",
                             f"matched_pattern={bad_name}",
@@ -712,7 +712,7 @@ class SecurityAnalyzer:
                     severity=Severity.HIGH,
                     confidence=Confidence.HIGH,
                     category=FindingCategory.MALWARE,
-                    source_agent=self.name,
+                    source=self.name,
                     evidence=[f"file_name={evt.file_name}", f"host={evt.host}"],
                     recommended_action=(
                         f"Quarantine '{evt.file_name}', alert the user who "
@@ -742,7 +742,7 @@ class SecurityAnalyzer:
                 severity=Severity.MEDIUM,
                 confidence=Confidence.MEDIUM,
                 category=FindingCategory.MALWARE,
-                source_agent=self.name,
+                source=self.name,
                 evidence=[f"file_name={evt.file_name}", f"strings={hits}", f"host={evt.host}"],
                 recommended_action=(
                     "Submit the file to your malware analysis sandbox (do "

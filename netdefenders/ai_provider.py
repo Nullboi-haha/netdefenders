@@ -1,6 +1,6 @@
 """AI provider abstraction for NetDefenders.
 
-Keeps LLM integration separate from security-agent logic.  When an API key
+Keeps LLM integration separate from analyzer logic.  When an API key
 is available, :class:`OpenAIProvider` can be used to enhance reasoning.
 When no key is configured, :class:`LocalFallback` provides deterministic
 responses so the system remains fully functional.

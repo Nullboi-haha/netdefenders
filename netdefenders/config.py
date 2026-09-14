@@ -27,7 +27,7 @@ class Config:
     openai_model: str = "gpt-4o-mini"
     log_level: str = "INFO"
     log_file: str = ""
-    max_agent_retries: int = 2
+    max_retries: int = 2
     base_dir: Path = Path(".")
     data_dir: Path = Path("data")
     samples_dir: Path = Path("data/samples")
@@ -43,7 +43,7 @@ class Config:
             "has_openai": self.has_openai,
             "openai_model": self.openai_model,
             "log_level": self.log_level,
-            "max_agent_retries": self.max_agent_retries,
+            "max_retries": self.max_retries,
         }
 
 
@@ -72,7 +72,7 @@ def load_config(env_file: str | Path | None = None) -> Config:
         openai_model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip(),
         log_level=os.environ.get("LOG_LEVEL", "INFO").strip(),
         log_file=os.environ.get("LOG_FILE", "").strip(),
-        max_agent_retries=int(os.environ.get("MAX_AGENT_RETRIES", "2")),
+        max_retries=int(os.environ.get("MAX_RETRIES", "2")),
         base_dir=base_dir,
         data_dir=base_dir / "data",
         samples_dir=base_dir / "data" / "samples",

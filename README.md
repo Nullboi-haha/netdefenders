@@ -134,7 +134,7 @@ copy .env.example .env
 | `OPENAI_MODEL` | No | `gpt-4o-mini` | Model name to use with the OpenAI provider |
 | `LOG_LEVEL` | No | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `LOG_FILE` | No | (empty) | Path to a log file. When empty, logs go to console only. |
-| `MAX_AGENT_RETRIES` | No | `2` | Number of retry attempts when analysis fails |
+| `MAX_RETRIES` | No | `2` | Number of retry attempts when analysis fails |
 
 **Never commit your `.env` file.** It is in `.gitignore`.
 
