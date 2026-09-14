@@ -14,17 +14,11 @@ import json
 import sys
 from pathlib import Path
 
-# Ensure the project root is on sys.path so `import config`, `import agents`
-# etc. work regardless of the current working directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import load_config
 from core.logging_config import get_logger
-from core.models import (
-    EventCategory,
-    SecurityAssessment,
-    SecurityEvent,
-)
+from core.models import SecurityAssessment, SecurityEvent
 from data.sample_data import load_demo_events
 from orchestrator import Orchestrator
 
@@ -39,21 +33,20 @@ def _format_assessment(assessment: SecurityAssessment) -> str:
     lines.append("=" * 72)
     lines.append("")
 
-    # Agent summary
-    lines.append("AGENTS RAN:")
-    for result in assessment.agent_results:
-        status = "OK" if result.success else "FAILED"
-        lines.append(
-            f"  • {result.agent_name:20s} [{status}]  "
-            f"findings: {result.finding_count}  {result.summary}"
-        )
+    # Analyzer summary
+    lines.append("ANALYZER:")
+    lines.append(
+        f"  SecurityAnalyzer       [OK]  "
+        f"findings: {len(assessment.correlated_findings)}  "
+        f"events: {assessment.events_analyzed}"
+    )
     lines.append("")
 
     # Findings
     lines.append(f"FINDINGS ({len(assessment.correlated_findings)}):")
     for i, f in enumerate(assessment.correlated_findings, 1):
         lines.append(f"  {i}. [{f.severity.value.upper()}] {f.title}")
-        lines.append(f"     Source: {f.source_agent} | Confidence: {f.confidence.value}")
+        lines.append(f"     Confidence: {f.confidence.value}")
         lines.append(f"     Category: {f.category.value}")
         if f.evidence:
             lines.append(f"     Evidence: {'; '.join(f.evidence[:4])}")

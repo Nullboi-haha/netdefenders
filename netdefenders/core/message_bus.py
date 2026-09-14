@@ -1,10 +1,9 @@
-"""In-process message bus for agent communication.
+"""In-process message bus for pipeline communication.
 
-The message bus decouples the orchestrator from individual agents.  Agents
-and the orchestrator communicate through typed :class:`Message` envelopes
-instead of direct method calls, which keeps the architecture extensible —
-new agents can subscribe to relevant topics without modifying the
-orchestrator's dispatch code.
+The message bus provides observability for the orchestrator pipeline.
+The orchestrator publishes pipeline lifecycle events (started, completed,
+error) so external observers can monitor progress without direct coupling
+to the analyzer internals.
 """
 
 from __future__ import annotations

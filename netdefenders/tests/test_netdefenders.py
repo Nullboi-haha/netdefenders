@@ -1,4 +1,4 @@
-"""Comprehensive test suite for NetDefenders.
+"""Comprehensive test suite for NetDefenders (single-analyzer architecture).
 
 All tests run offline — no internet connection or paid API is required.
 """
@@ -9,17 +9,16 @@ import os
 import sys
 from pathlib import Path
 
-# Ensure the project root is importable when running pytest from anywhere.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import pytest  # noqa: E402
 
 from ai_provider import LocalFallback, OpenAIProvider, create_provider  # noqa: E402
+from analyzer import SecurityAnalyzer  # noqa: E402
 from config import Config, load_config  # noqa: E402
 from core.message_bus import Message, MessageBus  # noqa: E402
 from core.models import (  # noqa: E402
-    AgentResult,
     Confidence,
     EventCategory,
     Finding,
@@ -29,13 +28,6 @@ from core.models import (  # noqa: E402
     SecurityAssessment,
     SecurityEvent,
     Severity,
-)
-from agents import (  # noqa: E402
-    BaseAgent,
-    MalwareAgent,
-    NetworkAgent,
-    ResponseAgent,
-    ThreatAgent,
 )
 from data.sample_data import load_demo_events  # noqa: E402
 from orchestrator import Orchestrator  # noqa: E402
@@ -47,13 +39,7 @@ from orchestrator import Orchestrator  # noqa: E402
 
 
 @pytest.fixture
-def bus() -> MessageBus:
-    return MessageBus()
-
-
-@pytest.fixture
 def cfg() -> Config:
-    """Load config with no API key to test the fallback path."""
     os.environ.pop("OPENAI_API_KEY", None)
     return load_config()
 
@@ -61,6 +47,11 @@ def cfg() -> Config:
 @pytest.fixture
 def demo_events() -> list[SecurityEvent]:
     return load_demo_events()
+
+
+@pytest.fixture
+def analyzer() -> SecurityAnalyzer:
+    return SecurityAnalyzer(ai_provider=LocalFallback())
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +89,7 @@ class TestConfig:
 class TestModels:
     def test_security_event_defaults(self) -> None:
         evt = SecurityEvent()
-        assert evt.id  # auto-generated UUID
+        assert evt.id
         assert evt.category == EventCategory.OTHER
         assert evt.source == "unknown"
 
@@ -120,32 +111,23 @@ class TestModels:
 
     def test_finding_severity_score(self) -> None:
         f = Finding(
-            title="test",
-            description="test",
-            severity=Severity.CRITICAL,
-            confidence=Confidence.HIGH,
-            category=FindingCategory.THREAT,
-            source_agent="test",
+            title="test", description="test",
+            severity=Severity.CRITICAL, confidence=Confidence.HIGH,
+            category=FindingCategory.THREAT, source_agent="test",
         )
         assert f.severity_score == 10.0
 
         f_low = Finding(
-            title="test",
-            description="test",
-            severity=Severity.LOW,
-            confidence=Confidence.LOW,
-            category=FindingCategory.THREAT,
-            source_agent="test",
+            title="test", description="test",
+            severity=Severity.LOW, confidence=Confidence.LOW,
+            category=FindingCategory.THREAT, source_agent="test",
         )
         assert f_low.severity_score == 1.0
 
     def test_finding_string_to_enum_conversion(self) -> None:
         f = Finding(
-            title="t",
-            description="d",
-            severity="high",
-            confidence="medium",
-            category="network",
+            title="t", description="d",
+            severity="high", confidence="medium", category="network",
             source_agent="x",
         )
         assert f.severity == Severity.HIGH
@@ -155,18 +137,6 @@ class TestModels:
     def test_indicator_type_conversion(self) -> None:
         ind = Indicator(type="ip", value="1.2.3.4")
         assert ind.type == IndicatorType.IP
-
-    def test_agent_result_properties(self) -> None:
-        r = AgentResult(agent_name="test", agent_role="test")
-        assert r.finding_count == 0
-        r.findings.append(
-            Finding(
-                title="t", description="d",
-                severity=Severity.LOW, confidence=Confidence.LOW,
-                category=FindingCategory.OTHER, source_agent="test",
-            )
-        )
-        assert r.finding_count == 1
 
     def test_to_dict_serialization(self) -> None:
         evt = SecurityEvent(host="test-host", category=EventCategory.NETWORK)
@@ -194,14 +164,16 @@ class TestModels:
 
 
 class TestMessageBus:
-    def test_publish_subscribe(self, bus: MessageBus) -> None:
+    def test_publish_subscribe(self) -> None:
+        bus = MessageBus()
         received: list[Message] = []
         bus.subscribe("test.topic", received.append)
         bus.publish(Message(topic="test.topic", sender="a", payload="hello"))
         assert len(received) == 1
         assert received[0].payload == "hello"
 
-    def test_send_creates_directed_message(self, bus: MessageBus) -> None:
+    def test_send_creates_directed_message(self) -> None:
+        bus = MessageBus()
         received: list[Message] = []
         bus.subscribe("direct", received.append)
         msg = bus.send("alice", "bob", "direct", {"key": "val"})
@@ -209,17 +181,20 @@ class TestMessageBus:
         assert msg.recipient == "bob"
         assert len(received) == 1
 
-    def test_history(self, bus: MessageBus) -> None:
+    def test_history(self) -> None:
+        bus = MessageBus()
         bus.publish(Message(topic="h1", sender="a"))
         bus.publish(Message(topic="h2", sender="b"))
         assert len(bus.history) == 2
 
-    def test_clear(self, bus: MessageBus) -> None:
+    def test_clear(self) -> None:
+        bus = MessageBus()
         bus.publish(Message(topic="x", sender="a"))
         bus.clear()
         assert len(bus.history) == 0
 
-    def test_subscriber_exception_does_not_crash(self, bus: MessageBus) -> None:
+    def test_subscriber_exception_does_not_crash(self) -> None:
+        bus = MessageBus()
         def bad_sub(msg: Message) -> None:
             raise ValueError("boom")
         good: list[Message] = []
@@ -230,206 +205,184 @@ class TestMessageBus:
 
 
 # ---------------------------------------------------------------------------
-# BaseAgent tests
+# SecurityAnalyzer tests (single analyzer — all detection categories)
 # ---------------------------------------------------------------------------
 
 
-class TestBaseAgent:
-    def test_base_agent_cannot_be_instantiated_directly(self) -> None:
-        with pytest.raises(TypeError):
-            BaseAgent("x", "y")  # type: ignore[abstract]
+class TestSecurityAnalyzer:
+    def test_analyzer_initializes(self, analyzer: SecurityAnalyzer) -> None:
+        assert analyzer.name == "SecurityAnalyzer"
+        assert analyzer.ai_provider is not None
 
-    def test_base_agent_handles_malformed_input(self, bus: MessageBus) -> None:
-        class DummyAgent(BaseAgent):
-            def _run(self, events):
-                return [], "ok"
+    def test_analyze_returns_assessment(self, analyzer: SecurityAnalyzer) -> None:
+        assessment = analyzer.analyze([SecurityEvent(host="h1")])
+        assert isinstance(assessment, SecurityAssessment)
+        assert assessment.events_analyzed == 1
 
-        agent = DummyAgent("dummy", "test", message_bus=bus)
-        result = agent.analyze("not a list")  # type: ignore[arg-type]
-        assert result.success is False
-        assert "expected a list" in result.error
+    def test_empty_events(self, analyzer: SecurityAnalyzer) -> None:
+        assessment = analyzer.analyze([])
+        assert assessment.events_analyzed == 0
+        assert len(assessment.correlated_findings) == 0
+        assert assessment.overall_severity == Severity.INFO
 
-    def test_base_agent_skips_non_security_events(self, bus: MessageBus) -> None:
-        class DummyAgent(BaseAgent):
-            def _run(self, events):
-                return [], f"processed {len(events)}"
+    def test_handles_malformed_events(self, analyzer: SecurityAnalyzer) -> None:
+        # SecurityEvent objects are always valid; the orchestrator handles
+        # raw non-SecurityEvent input. Here we pass only valid events.
+        assessment = analyzer.analyze([SecurityEvent(host="h1"), SecurityEvent(host="h2")])
+        assert assessment.events_analyzed == 2
 
-        agent = DummyAgent("dummy", "test", message_bus=bus)
-        result = agent.analyze([SecurityEvent(), "garbage", 42])  # type: ignore[list-item]
-        assert result.success is True
-        assert "processed 1" in result.summary
+    # -- detection: processes --
+    def test_detects_suspicious_process(self, analyzer: SecurityAnalyzer) -> None:
+        evt = SecurityEvent(process_name="mimikatz.exe", process_pid=1234, host="h1")
+        assessment = analyzer.analyze([evt])
+        assert any("mimikatz" in f.title.lower() for f in assessment.correlated_findings)
 
-    def test_base_agent_catches_run_exceptions(self, bus: MessageBus) -> None:
-        class CrashAgent(BaseAgent):
-            def _run(self, events):
-                raise RuntimeError("agent crashed")
-
-        agent = CrashAgent("crash", "test", message_bus=bus)
-        result = agent.analyze([SecurityEvent()])
-        assert result.success is False
-        assert "agent crashed" in result.error
-
-
-# ---------------------------------------------------------------------------
-# Individual agent tests
-# ---------------------------------------------------------------------------
-
-
-class TestThreatAgent:
-    def test_detects_suspicious_process(self, bus: MessageBus) -> None:
-        agent = ThreatAgent(message_bus=bus)
-        evt = SecurityEvent(
-            process_name="mimikatz.exe", process_pid=1234, host="h1",
-        )
-        result = agent.analyze([evt])
-        assert result.success
-        assert any("mimikatz" in f.title.lower() for f in result.findings)
-
-    def test_detects_suspicious_domain(self, bus: MessageBus) -> None:
-        agent = ThreatAgent(message_bus=bus)
+    # -- detection: domains --
+    def test_detects_suspicious_domain(self, analyzer: SecurityAnalyzer) -> None:
         evt = SecurityEvent(domain="malicious-c2.example", host="h1")
-        result = agent.analyze([evt])
-        assert any("domain" in f.title.lower() for f in result.findings)
+        assessment = analyzer.analyze([evt])
+        assert any("domain" in f.title.lower() for f in assessment.correlated_findings)
 
-    def test_detects_persistence(self, bus: MessageBus) -> None:
-        agent = ThreatAgent(message_bus=bus)
-        evt = SecurityEvent(
-            description="schtasks /create /tn evil", host="h1",
-        )
-        result = agent.analyze([evt])
-        assert any("persistence" in f.title.lower() for f in result.findings)
+    # -- detection: persistence --
+    def test_detects_persistence(self, analyzer: SecurityAnalyzer) -> None:
+        evt = SecurityEvent(description="schtasks /create /tn evil", host="h1")
+        assessment = analyzer.analyze([evt])
+        assert any("persistence" in f.title.lower() for f in assessment.correlated_findings)
 
-    def test_detects_credential_attack(self, bus: MessageBus) -> None:
-        agent = ThreatAgent(message_bus=bus)
-        evt = SecurityEvent(
-            description="mimikatz lsass dump detected", host="h1",
-        )
-        result = agent.analyze([evt])
-        assert any("credential" in f.title.lower() for f in result.findings)
+    # -- detection: credential attacks --
+    def test_detects_credential_attack(self, analyzer: SecurityAnalyzer) -> None:
+        evt = SecurityEvent(description="mimikatz lsass dump detected", host="h1")
+        assessment = analyzer.analyze([evt])
+        assert any("credential" in f.title.lower() for f in assessment.correlated_findings)
 
-    def test_benign_event_no_findings(self, bus: MessageBus) -> None:
-        agent = ThreatAgent(message_bus=bus)
-        evt = SecurityEvent(description="user logged in", host="h1")
-        result = agent.analyze([evt])
-        assert len(result.findings) == 0
+    # -- detection: privilege escalation --
+    def test_detects_privilege_escalation(self, analyzer: SecurityAnalyzer) -> None:
+        evt = SecurityEvent(description="PrintSpoofer privilege escalation", host="h1")
+        assessment = analyzer.analyze([evt])
+        assert any("privilege" in f.title.lower() for f in assessment.correlated_findings)
 
+    # -- detection: suspicious commands --
+    def test_detects_suspicious_command(self, analyzer: SecurityAnalyzer) -> None:
+        evt = SecurityEvent(description="powershell -enc abc123", host="h1")
+        assessment = analyzer.analyze([evt])
+        assert any("command" in f.title.lower() for f in assessment.correlated_findings)
 
-class TestNetworkAgent:
-    def test_detects_suspicious_port(self, bus: MessageBus) -> None:
-        agent = NetworkAgent(message_bus=bus)
-        evt = SecurityEvent(
-            remote_ip="1.2.3.4", remote_port=4444, protocol="TCP", host="h1",
-        )
-        result = agent.analyze([evt])
-        assert any("4444" in f.title for f in result.findings)
+    # -- detection: network — suspicious port --
+    def test_detects_suspicious_port(self, analyzer: SecurityAnalyzer) -> None:
+        evt = SecurityEvent(remote_ip="1.2.3.4", remote_port=4444, protocol="TCP", host="h1")
+        assessment = analyzer.analyze([evt])
+        assert any("4444" in f.title for f in assessment.correlated_findings)
 
-    def test_detects_known_bad_ip(self, bus: MessageBus) -> None:
-        agent = NetworkAgent(message_bus=bus)
-        evt = SecurityEvent(
-            remote_ip="185.220.101.5", remote_port=80, host="h1",
-        )
-        result = agent.analyze([evt])
-        assert any("known-bad" in f.title.lower() for f in result.findings)
+    # -- detection: network — known bad IP --
+    def test_detects_known_bad_ip(self, analyzer: SecurityAnalyzer) -> None:
+        evt = SecurityEvent(remote_ip="185.220.101.5", remote_port=80, host="h1")
+        assessment = analyzer.analyze([evt])
+        assert any("known-bad" in f.title.lower() for f in assessment.correlated_findings)
 
-    def test_detects_scanning(self, bus: MessageBus) -> None:
-        agent = NetworkAgent(message_bus=bus)
+    # -- detection: network — scanning --
+    def test_detects_scanning(self, analyzer: SecurityAnalyzer) -> None:
         events = [
             SecurityEvent(host="h1", remote_ip="10.0.0.1", remote_port=p)
             for p in range(1, 15)
         ]
-        result = agent.analyze(events)
-        assert any("scanning" in f.title.lower() for f in result.findings)
+        assessment = analyzer.analyze(events)
+        assert any("scanning" in f.title.lower() for f in assessment.correlated_findings)
 
-    def test_no_network_events(self, bus: MessageBus) -> None:
-        agent = NetworkAgent(message_bus=bus)
-        result = agent.analyze([SecurityEvent(description="no network")])
-        assert result.success
-        assert len(result.findings) == 0
-
-
-class TestMalwareAgent:
-    def test_detects_known_bad_hash(self, bus: MessageBus) -> None:
-        agent = MalwareAgent(message_bus=bus)
+    # -- detection: malware — known bad hash --
+    def test_detects_known_bad_hash(self, analyzer: SecurityAnalyzer) -> None:
         evt = SecurityEvent(
             file_name="beacon.exe",
             file_hash="a665a45920422f9d417e4837ee238a8b65e6e1f6a1b3a0c9f9d6e5f4c3b2a198",
             host="h1",
         )
-        result = agent.analyze([evt])
-        assert any("malicious" in f.title.lower() for f in result.findings)
+        assessment = analyzer.analyze([evt])
+        assert any("malicious" in f.title.lower() for f in assessment.correlated_findings)
 
-    def test_detects_double_extension(self, bus: MessageBus) -> None:
-        agent = MalwareAgent(message_bus=bus)
+    # -- detection: malware — double extension --
+    def test_detects_double_extension(self, analyzer: SecurityAnalyzer) -> None:
         evt = SecurityEvent(file_name="invoice.pdf.exe", host="h1")
-        result = agent.analyze([evt])
-        assert any("double-extension" in f.title.lower() for f in result.findings)
+        assessment = analyzer.analyze([evt])
+        assert any("double-extension" in f.title.lower() for f in assessment.correlated_findings)
 
-    def test_detects_suspicious_filename(self, bus: MessageBus) -> None:
-        agent = MalwareAgent(message_bus=bus)
+    # -- detection: malware — suspicious filename --
+    def test_detects_suspicious_filename(self, analyzer: SecurityAnalyzer) -> None:
         evt = SecurityEvent(file_name="procdump.exe", host="h1")
-        result = agent.analyze([evt])
-        assert any("procdump" in f.title.lower() for f in result.findings)
+        assessment = analyzer.analyze([evt])
+        assert any("procdump" in f.title.lower() for f in assessment.correlated_findings)
 
-    def test_detects_suspicious_strings(self, bus: MessageBus) -> None:
-        agent = MalwareAgent(message_bus=bus)
+    # -- detection: malware — suspicious strings --
+    def test_detects_suspicious_strings(self, analyzer: SecurityAnalyzer) -> None:
         evt = SecurityEvent(
             file_name="loader.dll",
             description="Contains CreateRemoteThread and VirtualAllocEx",
             host="h1",
         )
-        result = agent.analyze([evt])
-        assert any("suspicious strings" in f.title.lower() for f in result.findings)
+        assessment = analyzer.analyze([evt])
+        assert any("suspicious strings" in f.title.lower() for f in assessment.correlated_findings)
 
+    # -- detection: benign event produces no findings --
+    def test_benign_event_no_findings(self, analyzer: SecurityAnalyzer) -> None:
+        evt = SecurityEvent(description="user logged in", host="h1")
+        assessment = analyzer.analyze([evt])
+        assert len(assessment.correlated_findings) == 0
+
+    # -- correlation --
+    def test_correlation_deduplicates(self, analyzer: SecurityAnalyzer) -> None:
+        evt1 = SecurityEvent(process_name="mimikatz.exe", process_pid=1, host="h1")
+        evt2 = SecurityEvent(process_name="mimikatz.exe", process_pid=2, host="h2")
+        assessment = analyzer.analyze([evt1, evt2])
+        # Same title → deduplicated to 1
+        proc_findings = [f for f in assessment.correlated_findings if "mimikatz" in f.title.lower()]
+        assert len(proc_findings) == 1
+
+    # -- severity computation --
+    def test_severity_is_high_with_cred_attack(self, analyzer: SecurityAnalyzer) -> None:
+        evt = SecurityEvent(description="mimikatz lsass dump", host="h1")
+        assessment = analyzer.analyze([evt])
+        # Credential attack is CRITICAL severity with MEDIUM confidence →
+        # severity_score = 10.0 * 0.75 = 7.5 → maps to HIGH overall.
+        assert assessment.overall_severity in (Severity.HIGH, Severity.CRITICAL)
+        assert any(f.category == FindingCategory.CREDENTIAL_ATTACK
+                   for f in assessment.correlated_findings)
+
+    # -- recommendations --
+    def test_recommendations_generated(self, analyzer: SecurityAnalyzer) -> None:
+        evt = SecurityEvent(
+            process_name="mimikatz.exe", process_pid=1234, host="h1",
+        )
+        assessment = analyzer.analyze([evt])
+        assert len(assessment.response_recommendations) > 0
+        assert any("[HIGH]" in r for r in assessment.response_recommendations)
+
+    def test_recommendations_ordered_by_severity(self, analyzer: SecurityAnalyzer) -> None:
+        critical_evt = SecurityEvent(description="mimikatz lsass dump", host="h1")
+        medium_evt = SecurityEvent(description="schtasks /create /tn x", host="h2")
+        assessment = analyzer.analyze([critical_evt, medium_evt])
+        assert len(assessment.response_recommendations) >= 2
+        # CRITICAL should appear before MEDIUM
+        first_crit = next(
+            (i for i, r in enumerate(assessment.response_recommendations) if "[CRITICAL]" in r), -1
+        )
+        first_med = next(
+            (i for i, r in enumerate(assessment.response_recommendations) if "[MEDIUM]" in r), -1
+        )
+        assert first_crit != -1
+        assert first_med != -1
+        assert first_crit < first_med
+
+    # -- summary --
+    def test_summary_contains_sections(self, analyzer: SecurityAnalyzer) -> None:
+        evt = SecurityEvent(process_name="mimikatz.exe", host="h1")
+        assessment = analyzer.analyze([evt])
+        assert "Observed Evidence" in assessment.summary
+        assert "Suspected Threats" in assessment.summary
+        assert "Recommended Actions" in assessment.summary
+
+    # -- compute_sha256 helper --
     def test_compute_sha256(self) -> None:
-        h = MalwareAgent.compute_sha256(b"hello")
+        h = SecurityAnalyzer.compute_sha256(b"hello")
         assert len(h) == 64
         assert h == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-
-
-class TestResponseAgent:
-    def test_generate_recommendations(self, bus: MessageBus) -> None:
-        agent = ResponseAgent(message_bus=bus)
-        assessment = SecurityAssessment()
-        assessment.correlated_findings = [
-            Finding(
-                title="f1", description="d",
-                severity=Severity.CRITICAL, confidence=Confidence.HIGH,
-                category=FindingCategory.THREAT, source_agent="x",
-                recommended_action="Isolate the host immediately.",
-            ),
-            Finding(
-                title="f2", description="d",
-                severity=Severity.MEDIUM, confidence=Confidence.MEDIUM,
-                category=FindingCategory.NETWORK, source_agent="x",
-                recommended_action="Block the IP.",
-            ),
-        ]
-        recs = agent.generate_recommendations(assessment)
-        assert len(recs) == 2
-        assert recs[0].startswith("[CRITICAL]")
-
-    def test_build_assessment(self, bus: MessageBus) -> None:
-        agent = ResponseAgent(message_bus=bus)
-        events = [SecurityEvent(host="h1")]
-        results = [
-            AgentResult(
-                agent_name="ThreatAgent", agent_role="Threat",
-                findings=[
-                    Finding(
-                        title="threat1", description="d",
-                        severity=Severity.HIGH, confidence=Confidence.HIGH,
-                        category=FindingCategory.THREAT, source_agent="ThreatAgent",
-                        recommended_action="Investigate.",
-                    ),
-                ],
-            ),
-        ]
-        assessment = agent.build_assessment(events, results)
-        assert assessment.overall_severity == Severity.HIGH
-        assert len(assessment.correlated_findings) == 1
-        assert len(assessment.response_recommendations) >= 1
-        assert "Observed Evidence" in assessment.summary
-        assert "Recommended Actions" in assessment.summary
 
 
 # ---------------------------------------------------------------------------
@@ -440,11 +393,8 @@ class TestResponseAgent:
 class TestOrchestrator:
     def test_orchestrator_initializes(self, cfg: Config) -> None:
         orch = Orchestrator(config=cfg)
-        assert orch.threat_agent is not None
-        assert orch.network_agent is not None
-        assert orch.malware_agent is not None
-        assert orch.response_agent is not None
-        assert len(orch.agents) == 4
+        assert orch.analyzer is not None
+        assert orch.ai_provider is not None
 
     def test_orchestrator_runs_full_pipeline(self, cfg: Config, demo_events) -> None:
         orch = Orchestrator(config=cfg)
@@ -452,9 +402,7 @@ class TestOrchestrator:
         assert isinstance(assessment, SecurityAssessment)
         assert assessment.events_analyzed == len(demo_events)
         assert len(assessment.correlated_findings) > 0
-        assert assessment.overall_severity in (
-            Severity.CRITICAL, Severity.HIGH,
-        )
+        assert assessment.overall_severity in (Severity.CRITICAL, Severity.HIGH)
 
     def test_orchestrator_handles_empty_input(self, cfg: Config) -> None:
         orch = Orchestrator(config=cfg)
@@ -466,28 +414,14 @@ class TestOrchestrator:
     def test_orchestrator_handles_malformed_input(self, cfg: Config) -> None:
         orch = Orchestrator(config=cfg)
         assessment = orch.run(["garbage", 42, {"host": "ok"}])  # type: ignore[list-item]
-        # Only the valid dict should produce 1 event
         assert assessment.events_analyzed == 1
 
-    def test_orchestrator_skips_malware_when_no_file_events(self, cfg: Config) -> None:
+    def test_orchestrator_message_bus_logs_pipeline(self, cfg: Config, demo_events) -> None:
         orch = Orchestrator(config=cfg)
-        events = [
-            SecurityEvent(host="h1", remote_ip="1.2.3.4", remote_port=4444),
-        ]
-        assessment = orch.run(events)
-        malware_result = [
-            r for r in assessment.agent_results if r.agent_name == "MalwareAgent"
-        ][0]
-        assert "Skipped" in malware_result.summary
-
-    def test_orchestrator_agent_results_present(self, cfg: Config, demo_events) -> None:
-        orch = Orchestrator(config=cfg)
-        assessment = orch.run(demo_events)
-        agent_names = {r.agent_name for r in assessment.agent_results}
-        assert "ThreatAgent" in agent_names
-        assert "NetworkAgent" in agent_names
-        assert "MalwareAgent" in agent_names
-        assert "ResponseAgent" in agent_names
+        orch.run(demo_events)
+        topics = [m.topic for m in orch.message_bus.history]
+        assert "pipeline.started" in topics
+        assert "pipeline.completed" in topics
 
 
 # ---------------------------------------------------------------------------
@@ -512,17 +446,27 @@ class TestAIProvider:
         assert isinstance(p, LocalFallback)
 
     def test_openai_provider_without_package(self) -> None:
-        # With a fake key and no openai package, should gracefully fail
         os.environ["OPENAI_API_KEY"] = "sk-fake-key-for-testing"
         cfg2 = load_config()
         p = create_provider(cfg2)
-        # openai package is not installed in test env → should fall back
         assert isinstance(p, LocalFallback)
         os.environ.pop("OPENAI_API_KEY", None)
 
     def test_openai_provider_not_available_without_key(self) -> None:
         p = OpenAIProvider(api_key="", model="gpt-4o-mini")
         assert p.is_available is False
+
+    def test_analyzer_works_with_local_fallback(self) -> None:
+        analyzer = SecurityAnalyzer(ai_provider=LocalFallback())
+        evt = SecurityEvent(process_name="mimikatz.exe", host="h1")
+        assessment = analyzer.analyze([evt])
+        assert len(assessment.correlated_findings) > 0
+
+    def test_analyzer_works_with_no_provider(self) -> None:
+        analyzer = SecurityAnalyzer(ai_provider=None)
+        evt = SecurityEvent(process_name="mimikatz.exe", host="h1")
+        assessment = analyzer.analyze([evt])
+        assert len(assessment.correlated_findings) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -561,3 +505,23 @@ class TestDemoData:
         assessment = orch.run(demo_events)
         assert len(assessment.response_recommendations) > 0
         assert assessment.overall_severity.numeric >= Severity.HIGH.numeric
+
+    def test_demo_finds_mimikatz(self, cfg: Config, demo_events) -> None:
+        orch = Orchestrator(config=cfg)
+        assessment = orch.run(demo_events)
+        assert any("mimikatz" in f.title.lower() for f in assessment.correlated_findings)
+
+    def test_demo_finds_known_bad_ip(self, cfg: Config, demo_events) -> None:
+        orch = Orchestrator(config=cfg)
+        assessment = orch.run(demo_events)
+        assert any("known-bad" in f.title.lower() for f in assessment.correlated_findings)
+
+    def test_demo_finds_scanning(self, cfg: Config, demo_events) -> None:
+        orch = Orchestrator(config=cfg)
+        assessment = orch.run(demo_events)
+        assert any("scanning" in f.title.lower() for f in assessment.correlated_findings)
+
+    def test_demo_finds_malware_hash(self, cfg: Config, demo_events) -> None:
+        orch = Orchestrator(config=cfg)
+        assessment = orch.run(demo_events)
+        assert any("malicious" in f.title.lower() for f in assessment.correlated_findings)

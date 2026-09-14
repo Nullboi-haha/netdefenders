@@ -1,10 +1,10 @@
 # NetDefenders
 
-AI-assisted defensive cybersecurity analysis system with multiple specialized agents coordinated by a central orchestrator.
+AI-assisted defensive cybersecurity analysis system with a single central AI analyzer.
 
 ## What NetDefenders Is
 
-NetDefenders is a local security-analysis tool that examines security events and produces a structured threat assessment with recommended defensive actions. It uses a team of specialized agents — each focused on a different domain — that are coordinated by a central Orchestrator. The system works fully offline with deterministic pattern matching, and can optionally use an OpenAI model for enhanced reasoning when an API key is provided.
+NetDefenders is a local security-analysis tool that examines security events and produces a structured threat assessment with recommended defensive actions. It uses **one central SecurityAnalyzer** that examines all categories of defensive security data — suspicious processes, network connections, IPs/domains, malware indicators, authentication events, privilege escalation, persistence, and attack patterns. The system works fully offline with deterministic pattern matching, and can optionally use an OpenAI model for enhanced reasoning when an API key is provided.
 
 This is a **defensive** tool. It does not perform attacks, scan external systems, execute malware, or take destructive actions. It analyzes supplied data and recommends responses for a human analyst to approve.
 
@@ -17,13 +17,11 @@ INPUT (security events)
   Normalize & Validate
         │
         ▼
-  Threat Analysis Agent ──► Findings
-        │
-        ▼
-  Network Analysis Agent ──► Findings
-        │
-        ▼
-  Malware/IOC Agent (when file events exist) ──► Findings
+  SecurityAnalyzer (single central AI analyzer)
+    ├── Process analysis (suspicious processes, credential attacks, persistence, privesc)
+    ├── Network analysis (suspicious ports, known-bad IPs, scanning, anomalous traffic)
+    ├── Malware analysis (file hashes, filenames, double extensions, suspicious strings)
+    └── AI enhancement (when an API key is configured)
         │
         ▼
   Correlate & Deduplicate Findings
@@ -32,28 +30,43 @@ INPUT (security events)
   Determine Overall Severity & Confidence
         │
         ▼
-  Response Agent ──► Recommended Actions
+  Generate Prioritized Defensive Recommendations
         │
         ▼
   FINAL SECURITY ASSESSMENT
 ```
 
-### Agents
+### Single Central Analyzer
 
-| Agent | Role |
-|-------|------|
-| **ThreatAgent** | Detects suspicious processes, credential attacks, persistence, privilege escalation, and known attack patterns |
-| **NetworkAgent** | Analyzes network events for suspicious ports, known-bad IPs, scanning behavior, and anomalous repeated connections |
-| **MalwareAgent** | Performs static analysis of file metadata — hashes, filenames, double extensions, suspicious strings (never executes files) |
-| **ResponseAgent** | Correlates all findings, computes overall severity, and generates prioritized defensive recommendations |
+The `SecurityAnalyzer` is the sole intelligence in the system. It receives normalized security events and analyzes them across all security categories in a single pass. There are no separate agent classes — the analyzer handles threat detection, network analysis, malware/IOC analysis, and response recommendation generation internally.
 
-### Communication
+### Analysis Categories
 
-Agents communicate through an in-process **Message Bus** (publish/subscribe). The Orchestrator sends tasks to agents via the bus and collects structured `AgentResult` objects. Each agent publishes `agent.started` and `agent.completed` messages so the orchestrator has full visibility into the pipeline.
+The analyzer examines events across these categories (not separate agents):
+
+| Category | What it detects |
+|----------|----------------|
+| Suspicious processes | Known attack tools (mimikatz, procdump, cobaltstrike, etc.) |
+| Credential attacks | Credential dumping, kerberoasting, password spraying, pass-the-hash |
+| Persistence | Scheduled tasks, registry run keys, startup folders, WMI subscriptions |
+| Privilege escalation | PrintSpoofer, JuicyPotato, token impersonation, BypassUAC |
+| Suspicious commands | Encoded PowerShell, base64 decoding, net user creation |
+| Network — suspicious ports | C2/backdoor ports (4444, 31337, 6667, etc.) |
+| Network — known-bad IPs | Connections to known malicious infrastructure |
+| Network — scanning | Port scan behavior (many distinct ports from one host) |
+| Network — anomalies | Repeated connections, high-risk outbound traffic |
+| Malware — file hashes | Known-malicious SHA-256 hashes |
+| Malware — filenames | Filenames matching known attack tools |
+| Malware — double extensions | Disguised executables (e.g. invoice.pdf.exe) |
+| Malware — suspicious strings | API calls and patterns common in malware |
 
 ### AI Provider Abstraction
 
-An `AIProvider` interface keeps LLM integration separate from agent logic. When `OPENAI_API_KEY` is set and the `openai` package is installed, an `OpenAIProvider` is used. Otherwise, a `LocalFallback` provider ensures the system works fully offline. To add another provider, implement the `AIProvider` interface and register it in `create_provider()`.
+An `AIProvider` interface keeps LLM integration separate from analyzer logic. When `OPENAI_API_KEY` is set and the `openai` package is installed, an `OpenAIProvider` is used for enhanced reasoning. Otherwise, a `LocalFallback` provider ensures the system works fully offline. To add another provider, implement the `AIProvider` interface and register it in `create_provider()`.
+
+### Message Bus
+
+The Orchestrator publishes pipeline events (`pipeline.started`, `pipeline.completed`, `pipeline.error`) to an in-process message bus for logging and observability.
 
 ## Directory Structure
 
@@ -65,15 +78,9 @@ netdefenders/
 ├── requirements.txt
 ├── config.py
 ├── orchestrator.py
+├── analyzer.py
 ├── ai_provider.py
 ├── main.py
-├── agents/
-│   ├── __init__.py
-│   ├── base_agent.py
-│   ├── threat_agent.py
-│   ├── network_agent.py
-│   ├── malware_agent.py
-│   └── response_agent.py
 ├── core/
 │   ├── __init__.py
 │   ├── models.py
@@ -127,7 +134,7 @@ copy .env.example .env
 | `OPENAI_MODEL` | No | `gpt-4o-mini` | Model name to use with the OpenAI provider |
 | `LOG_LEVEL` | No | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `LOG_FILE` | No | (empty) | Path to a log file. When empty, logs go to console only. |
-| `MAX_AGENT_RETRIES` | No | `2` | Number of retry attempts when an agent fails |
+| `MAX_AGENT_RETRIES` | No | `2` | Number of retry attempts when analysis fails |
 
 **Never commit your `.env` file.** It is in `.gitignore`.
 
@@ -171,27 +178,19 @@ python -m pytest -v
 
 All tests run offline — no internet connection or API key is required.
 
-## How to Add Another Agent
+## How the Analyzer Works
 
-1. Create a new file in `agents/` (e.g. `agents/custom_agent.py`).
-2. Subclass `BaseAgent` and implement the `_run()` method:
+The `SecurityAnalyzer` receives normalized `SecurityEvent` objects and runs all detection checks in a single pass:
 
-```python
-from agents.base_agent import BaseAgent
-from core.models import Finding, SecurityEvent
+1. **Detect** — Each event is checked against all detection rules (processes, domains, persistence, credential attacks, privilege escalation, commands, network ports, known-bad IPs, file hashes, filenames, double extensions, suspicious strings). Aggregate checks (scanning, repeated connections) run across all network events.
 
-class CustomAgent(BaseAgent):
-    def __init__(self, message_bus=None, config=None):
-        super().__init__("CustomAgent", "Custom Analysis", message_bus, config)
+2. **Correlate** — Findings are deduplicated by title so the same threat reported from multiple events appears once.
 
-    def _run(self, events):
-        findings = []
-        # your analysis logic here
-        return findings, f"CustomAgent analyzed {len(events)} events"
-```
+3. **Score** — Overall severity is computed from the highest finding severity score. Confidence is averaged across all findings.
 
-3. Import and register it in `agents/__init__.py`.
-4. Add it to the Orchestrator's `agents` list in `orchestrator.py`.
+4. **Recommend** — Defensive recommendations are generated from each finding's recommended action, ordered by severity (highest first), and deduplicated.
+
+5. **Assess** — A final `SecurityAssessment` is produced containing all findings, indicators, severity, confidence, recommendations, and a human-readable summary.
 
 ## How to Configure an LLM Provider
 
@@ -206,7 +205,7 @@ class CustomAgent(BaseAgent):
    OPENAI_MODEL=gpt-4o-mini
    ```
 
-3. Run normally — the system will automatically use the OpenAI provider.
+3. Run normally — the analyzer will automatically use the OpenAI provider for enhanced reasoning.
 
 To add a different provider (e.g. Anthropic, local LLM):
 
