@@ -96,7 +96,7 @@ export class DecoderPanel extends GamePanel {
   draw(ctx: PanelContext): void {
     this.drawShell(ctx, () => {
       const { w, h } = ctx;
-      const c = ctx as unknown as CanvasRenderingContext2D;
+      const c = ctx.canvas;
       const contentH = h - 32;
 
       // Key flash

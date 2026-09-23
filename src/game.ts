@@ -201,7 +201,7 @@ export class Game {
     for (const panel of this.panels) {
       if (panel.state !== "active") continue;
       const layout = panel["_layout"];
-      const ctx: PanelContext = {
+      const pctx: PanelContext = {
         x: layout.x,
         y: layout.y,
         w: layout.w,
@@ -211,9 +211,10 @@ export class Game {
         audio: this.audio,
         difficulty: this.difficulty,
         time: this.gameTime,
+        canvas: this.ctx,
       };
       const prevHealth = panel.health;
-      panel.update(ctx);
+      panel.update(pctx);
 
       // Score from healing
       if (panel.health > prevHealth) {
@@ -481,7 +482,7 @@ export class Game {
     for (const panel of this.panels) {
       const layout = panel["_layout"];
       if (!layout) continue;
-      const ctx: PanelContext = {
+      const pctx: PanelContext = {
         x: layout.x,
         y: layout.y,
         w: layout.w,
@@ -491,8 +492,9 @@ export class Game {
         audio: this.audio,
         difficulty: this.difficulty,
         time: this.gameTime,
+        canvas: this.ctx,
       };
-      panel.draw(ctx);
+      panel.draw(pctx);
     }
   }
 

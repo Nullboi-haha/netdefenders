@@ -107,7 +107,7 @@ export class FirewallPanel extends GamePanel {
   draw(ctx: PanelContext): void {
     this.drawShell(ctx, () => {
       const { w, h } = ctx;
-      const c = ctx as unknown as CanvasRenderingContext2D;
+      const c = ctx.canvas;
 
       // Grid background
       c.strokeStyle = "rgba(34, 211, 238, 0.05)";
