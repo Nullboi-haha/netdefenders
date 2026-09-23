@@ -143,11 +143,11 @@ export class Game {
 
   update(dt: number): void {
     this.gameTime += dt;
-    this.input.resetFrame();
 
     if (this.state === "menu") {
       this.updateStars(dt);
       this.updateMenu();
+      this.input.resetFrame();
       return;
     }
 
@@ -157,16 +157,21 @@ export class Game {
         this.state = "menu";
         this.audio.click();
       }
+      this.input.resetFrame();
       return;
     }
 
     if (this.state === "gameover") {
       this.updateStars(dt);
       this.updateGameOver();
+      this.input.resetFrame();
       return;
     }
 
-    if (this.state !== "playing") return;
+    if (this.state !== "playing") {
+      this.input.resetFrame();
+      return;
+    }
 
     this.updateStars(dt);
 
@@ -239,6 +244,8 @@ export class Game {
       ft.life -= dt;
     }
     this.floatingTexts = this.floatingTexts.filter((ft) => ft.life > 0);
+
+    this.input.resetFrame();
   }
 
   private updateStars(dt: number): void {
