@@ -1,5 +1,6 @@
 import { GamePanel, PanelContext } from "./base";
 import { COLORS, rand, randInt, clamp, pick, chance } from "../utils";
+import { SerializedPanelState } from "../multiplayer/types";
 
 interface Bot {
   gx: number;
@@ -208,5 +209,35 @@ export class IntrusionPanel extends GamePanel {
 
   drawPreview(ctx: PanelContext): void {
     this.draw(ctx);
+  }
+
+  serialize(): SerializedPanelState {
+    return {
+      id: "intrusion",
+      state: this.state,
+      health: this.health,
+      maxHealth: this.maxHealth,
+      data: {
+        bots: this.bots,
+        towers: this.towers,
+        spawnTimer: this.spawnTimer,
+        score: this.score,
+        cellW: this.cellW,
+        cellH: this.cellH,
+      },
+    };
+  }
+
+  deserialize(state: SerializedPanelState): void {
+    this.state = state.state;
+    this.health = state.health;
+    this.maxHealth = state.maxHealth;
+    const d = state.data;
+    this.bots = (d.bots as Bot[]) || [];
+    this.towers = (d.towers as Tower[]) || [];
+    this.spawnTimer = (d.spawnTimer as number) || 0;
+    this.score = (d.score as number) || 0;
+    this.cellW = (d.cellW as number) || 0;
+    this.cellH = (d.cellH as number) || 0;
   }
 }

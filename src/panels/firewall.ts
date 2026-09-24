@@ -1,5 +1,6 @@
 import { GamePanel, PanelContext } from "./base";
 import { COLORS, rand, randInt, clamp } from "../utils";
+import { SerializedPanelState } from "../multiplayer/types";
 
 interface Threat {
   x: number;
@@ -176,6 +177,36 @@ export class FirewallPanel extends GamePanel {
 
   drawPreview(ctx: PanelContext): void {
     this.draw(ctx);
+  }
+
+  serialize(): SerializedPanelState {
+    return {
+      id: "firewall",
+      state: this.state,
+      health: this.health,
+      maxHealth: this.maxHealth,
+      data: {
+        threats: this.threats,
+        spawnTimer: this.spawnTimer,
+        particles: this.particles,
+        mouseX: this.mouseX,
+        mouseY: this.mouseY,
+        score: this.score,
+      },
+    };
+  }
+
+  deserialize(state: SerializedPanelState): void {
+    this.state = state.state;
+    this.health = state.health;
+    this.maxHealth = state.maxHealth;
+    const d = state.data;
+    this.threats = (d.threats as Threat[]) || [];
+    this.spawnTimer = (d.spawnTimer as number) || 0;
+    this.particles = (d.particles as typeof this.particles) || [];
+    this.mouseX = (d.mouseX as number) || 0;
+    this.mouseY = (d.mouseY as number) || 0;
+    this.score = (d.score as number) || 0;
   }
 }
 

@@ -1,6 +1,7 @@
 import { COLORS, rand } from "../utils";
 import { Input } from "../input";
 import { Audio } from "../audio";
+import { SerializedPanelState } from "../multiplayer/types";
 
 export type PanelState = "active" | "crashed";
 
@@ -30,6 +31,8 @@ export abstract class GamePanel {
   abstract update(ctx: PanelContext): void;
   abstract draw(ctx: PanelContext): void;
   abstract drawPreview(ctx: PanelContext): void;
+  abstract serialize(): SerializedPanelState;
+  abstract deserialize(state: SerializedPanelState): void;
 
   damage(amount: number): void {
     this.health = Math.max(0, this.health - amount);

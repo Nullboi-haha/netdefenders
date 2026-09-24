@@ -1,5 +1,6 @@
 import { GamePanel, PanelContext } from "./base";
 import { COLORS, rand, pick, chance } from "../utils";
+import { SerializedPanelState } from "../multiplayer/types";
 
 const KEYS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
@@ -165,5 +166,33 @@ export class DecoderPanel extends GamePanel {
 
   drawPreview(ctx: PanelContext): void {
     this.draw(ctx);
+  }
+
+  serialize(): SerializedPanelState {
+    return {
+      id: "decoder",
+      state: this.state,
+      health: this.health,
+      maxHealth: this.maxHealth,
+      data: {
+        jobs: this.jobs,
+        spawnTimer: this.spawnTimer,
+        score: this.score,
+        lastKey: this.lastKey,
+        keyFlash: this.keyFlash,
+      },
+    };
+  }
+
+  deserialize(state: SerializedPanelState): void {
+    this.state = state.state;
+    this.health = state.health;
+    this.maxHealth = state.maxHealth;
+    const d = state.data;
+    this.jobs = (d.jobs as DecryptJob[]) || [];
+    this.spawnTimer = (d.spawnTimer as number) || 0;
+    this.score = (d.score as number) || 0;
+    this.lastKey = (d.lastKey as string) || "";
+    this.keyFlash = (d.keyFlash as number) || 0;
   }
 }

@@ -1,5 +1,6 @@
 import { GamePanel, PanelContext } from "./base";
 import { COLORS, rand, clamp } from "../utils";
+import { SerializedPanelState } from "../multiplayer/types";
 
 interface Packet {
   x: number;
@@ -171,5 +172,31 @@ export class RouterPanel extends GamePanel {
 
   drawPreview(ctx: PanelContext): void {
     this.draw(ctx);
+  }
+
+  serialize(): SerializedPanelState {
+    return {
+      id: "router",
+      state: this.state,
+      health: this.health,
+      maxHealth: this.maxHealth,
+      data: {
+        packets: this.packets,
+        spawnTimer: this.spawnTimer,
+        selectedLane: this.selectedLane,
+        score: this.score,
+      },
+    };
+  }
+
+  deserialize(state: SerializedPanelState): void {
+    this.state = state.state;
+    this.health = state.health;
+    this.maxHealth = state.maxHealth;
+    const d = state.data;
+    this.packets = (d.packets as Packet[]) || [];
+    this.spawnTimer = (d.spawnTimer as number) || 0;
+    this.selectedLane = (d.selectedLane as number) || 0;
+    this.score = (d.score as number) || 0;
   }
 }
