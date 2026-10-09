@@ -460,7 +460,7 @@ export class MultiplayerUI {
     }
 
     const readyBy = playerListY + lobby.playerCount * playerRowH + 20;
-    const myInfo = lobby.players.find((p) => p.id === this.mpManager?.["net"]?.id);
+    const myInfo = lobby.players.find((p) => p.id === this.mpManager?.getPlayerId());
     const isReady = myInfo?.ready || false;
 
     const allReady = connectedPlayers.length === lobby.playerCount && connectedPlayers.every((p) => p.ready);

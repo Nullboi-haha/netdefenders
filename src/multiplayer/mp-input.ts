@@ -7,6 +7,10 @@ export class MultiplayerInput extends Input {
   private remoteKeys = new Set<string>();
   private active = false;
 
+  constructor(canvas: HTMLCanvasElement) {
+    super(canvas, true);
+  }
+
   setRemoteActive(active: boolean): void {
     this.active = active;
   }

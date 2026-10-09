@@ -1,10 +1,11 @@
 export class Input {
-  private keys: Set<string> = new Set();
-  private mouse = { x: 0, y: 0, down: false, justClicked: false };
-  private canvas: HTMLCanvasElement;
+  protected keys: Set<string> = new Set();
+  protected mouse = { x: 0, y: 0, down: false, justClicked: false };
+  protected canvas: HTMLCanvasElement;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, passive = false) {
     this.canvas = canvas;
+    if (passive) return;
 
     window.addEventListener("keydown", (e) => {
       this.keys.add(e.key.toLowerCase());

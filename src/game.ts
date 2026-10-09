@@ -80,10 +80,20 @@ export class Game {
     this.input = new Input(canvas);
     this.audio = new Audio();
     this.mpUI = new MultiplayerUI(this.ctx);
+    this.wireUICallbacks();
     this.resize();
     window.addEventListener("resize", () => this.resize());
     this.initStars();
     this.setupKeyboardHandler();
+  }
+
+  private wireUICallbacks(): void {
+    this.mpUI.onCreateLobby = (playerCount: PlayerCount) => {
+      this.hostMultiplayer(playerCount);
+    };
+    this.mpUI.onJoinLobby = (roomCode: string) => {
+      this.joinMultiplayer(roomCode);
+    };
   }
 
   private setupKeyboardHandler(): void {
@@ -91,6 +101,10 @@ export class Game {
       const key = e.key.toLowerCase();
       if (this.state === "menu" && this.mode !== "solo") {
         this.mpUI.handleKeyInput(key);
+        const menuMode = this.mpUI.getMenuState().mode;
+        if (menuMode === "solo" && key === "escape") {
+          this.mode = "solo";
+        }
       }
     });
   }
@@ -1213,8 +1227,6 @@ export class Game {
     });
 
     this.mpUI.setManager(this.mpManager);
-    this.mpUI.onCreateLobby = undefined;
-    this.mpUI.onJoinLobby = undefined;
     this.mpUI.onLeave = () => {
       this.mpManager?.leave();
       this.mpManager = null;

@@ -265,6 +265,10 @@ export class MultiplayerManager {
     return this.isHost;
   }
 
+  getPlayerId(): string {
+    return this.net.id;
+  }
+
   isModerator(): boolean {
     const me = this.getMyPlayerInfo();
     return me?.isModerator || false;
