@@ -131,7 +131,7 @@ export class MultiplayerManager {
       this.lobbyState = {
         roomCode: this.net.getRoomCode() || "",
         hostId: this.net.id,
-        playerCount: 4,
+        playerCount: this.pendingPlayerCount ?? 4,
         players: [],
         state: "lobby",
         assignments: {} as Record<PanelId, string | null>,
@@ -179,8 +179,14 @@ export class MultiplayerManager {
     if (this.lobbyCallback) this.lobbyCallback(this.lobbyState);
   }
 
+  private pendingPlayerCount: PlayerCount | null = null;
+
   setPlayerCount(count: PlayerCount): void {
-    if (!this.isHost || !this.lobbyState) return;
+    if (!this.isHost) return;
+    if (!this.lobbyState) {
+      this.pendingPlayerCount = count;
+      return;
+    }
     this.lobbyState.playerCount = count;
     this.broadcastLobby();
   }

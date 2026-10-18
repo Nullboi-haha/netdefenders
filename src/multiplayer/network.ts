@@ -50,78 +50,54 @@ export class NetworkManager {
 
   async hostRoom(roomCode: string): Promise<void> {
     this.roomCode = roomCode;
-    const sb = getClient();
-    const channelName = `room-${roomCode}`;
-
-    this.channel = sb.channel(channelName, {
-      config: { presence: { key: this.playerId } },
-    });
-
-    this.channel
-      .on("broadcast", { event: "game" }, (payload) => {
-        if (this.msgHandler && payload.payload) {
-          this.msgHandler(payload.payload as GameMessage);
-        }
-      })
-      .on("presence", { event: "sync" }, () => {
-        if (this.presenceHandler && this.channel) {
-          const state = this.channel.presenceState();
-          const peers: Record<string, { id: string; name: string; ready: boolean }> = {};
-          for (const [key, meta] of Object.entries(state)) {
-            const m = meta[0] as { id: string; name: string; ready: boolean };
-            peers[key] = m;
-          }
-          this.presenceHandler(peers);
-        }
-      })
-      .subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          this.connected = true;
-          await this.channel!.track({
-            id: this.playerId,
-            name: this.playerName,
-            ready: false,
-          });
-        }
-      });
+    await this.connectChannel(roomCode);
   }
 
   async joinRoom(roomCode: string): Promise<void> {
     this.roomCode = roomCode;
-    const sb = getClient();
-    const channelName = `room-${roomCode}`;
+    await this.connectChannel(roomCode);
+  }
 
-    this.channel = sb.channel(channelName, {
-      config: { presence: { key: this.playerId } },
-    });
+  private connectChannel(roomCode: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sb = getClient();
+      const channelName = `room-${roomCode}`;
 
-    this.channel
-      .on("broadcast", { event: "game" }, (payload) => {
-        if (this.msgHandler && payload.payload) {
-          this.msgHandler(payload.payload as GameMessage);
-        }
-      })
-      .on("presence", { event: "sync" }, () => {
-        if (this.presenceHandler && this.channel) {
-          const state = this.channel.presenceState();
-          const peers: Record<string, { id: string; name: string; ready: boolean }> = {};
-          for (const [key, meta] of Object.entries(state)) {
-            const m = meta[0] as { id: string; name: string; ready: boolean };
-            peers[key] = m;
-          }
-          this.presenceHandler(peers);
-        }
-      })
-      .subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          this.connected = true;
-          await this.channel!.track({
-            id: this.playerId,
-            name: this.playerName,
-            ready: false,
-          });
-        }
+      this.channel = sb.channel(channelName, {
+        config: { presence: { key: this.playerId } },
       });
+
+      this.channel
+        .on("broadcast", { event: "game" }, (payload) => {
+          if (this.msgHandler && payload.payload) {
+            this.msgHandler(payload.payload as GameMessage);
+          }
+        })
+        .on("presence", { event: "sync" }, () => {
+          if (this.presenceHandler && this.channel) {
+            const state = this.channel.presenceState();
+            const peers: Record<string, { id: string; name: string; ready: boolean }> = {};
+            for (const [key, meta] of Object.entries(state)) {
+              const m = meta[0] as { id: string; name: string; ready: boolean };
+              peers[key] = m;
+            }
+            this.presenceHandler(peers);
+          }
+        })
+        .subscribe(async (status) => {
+          if (status === "SUBSCRIBED") {
+            this.connected = true;
+            await this.channel!.track({
+              id: this.playerId,
+              name: this.playerName,
+              ready: false,
+            });
+            resolve();
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            reject(new Error(`Channel ${status}`));
+          }
+        });
+    });
   }
 
   send(msg: GameMessage): void {

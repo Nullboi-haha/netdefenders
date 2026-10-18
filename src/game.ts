@@ -89,10 +89,16 @@ export class Game {
 
   private wireUICallbacks(): void {
     this.mpUI.onCreateLobby = (playerCount: PlayerCount) => {
-      this.hostMultiplayer(playerCount);
+      this.hostMultiplayer(playerCount).catch((err) => {
+        this.mpUI.setMenuMode("lobby-host");
+        this.mpUI.getMenuState().errorMessage = "Failed to create lobby";
+      });
     };
     this.mpUI.onJoinLobby = (roomCode: string) => {
-      this.joinMultiplayer(roomCode);
+      this.joinMultiplayer(roomCode).catch((err) => {
+        this.mpUI.setMenuMode("lobby-join");
+        this.mpUI.getMenuState().errorMessage = "Could not join room";
+      });
     };
   }
 
@@ -1206,7 +1212,6 @@ export class Game {
     const roomCode = MultiplayerManager.generateRoomCode();
 
     const net = new NetworkManager(playerId, playerName);
-    await net.hostRoom(roomCode);
 
     this.mpManager = new MultiplayerManager(net, true);
     this.mpManager.setPlayerCount(playerCount);
@@ -1237,6 +1242,8 @@ export class Game {
 
     this.mode = "host";
     this.mpUI.setMenuMode("lobby");
+
+    await net.hostRoom(roomCode);
   }
 
   async joinMultiplayer(roomCode: string): Promise<void> {
@@ -1244,7 +1251,6 @@ export class Game {
     const playerName = getPlayerName(0);
 
     const net = new NetworkManager(playerId, playerName);
-    await net.joinRoom(roomCode);
 
     this.mpManager = new MultiplayerManager(net, false);
     this.mpManager.onLobbyUpdate((state) => {
@@ -1274,5 +1280,7 @@ export class Game {
 
     this.mode = "client";
     this.mpUI.setMenuMode("lobby");
+
+    await net.joinRoom(roomCode);
   }
 }
